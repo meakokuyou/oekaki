@@ -113,6 +113,7 @@ input[type=text]{flex:1; min-width:160px}
       <div id="view-single" class="card notch">
         <h2>♪ きょうの会のテーマ</h2>
         <div class="single" id="singleVal">「ひく!」を押してね</div>
+        <div class="row" style="justify-content:center"><button class="chip" id="proToggle">🔥 上級者向けもまぜる</button></div>
         <button class="big" id="singleBtn">ひく!</button>
         <div class="row"><button class="small" id="copy1">📋 LINE用にコピー</button></div>
       </div>
@@ -176,12 +177,12 @@ function pack(o){ const r=[]; for(const g in o) for(const t of o[g]) r.push({t,g
 const DEFAULTS = {
   single:[
     "オリジナルキャラを描こう","各自でオリキャラを描き合う(メンバーのキャラを自分の絵柄で)",
-    "同じキャラをみんなで別々の角度から描く","リレーお絵かき(描き足していく)",
-    "同じお題でみんなで描いて見比べ","1分クロッキー大会","自分を動物にしたら?",
-    "自分をモンスターにしたら?","好きな食べ物を擬人化","季節の一枚",
-    "好きな色だけで描く","線画を交換して色塗り","10年後の自分","夢で見た景色",
-    "好きな曲のイメージを描く","架空の生き物図鑑","住んでみたい部屋",
-    "オリキャラの私服コーデ","誰かが描いた背景にキャラを置く","落書きから物語を作る"
+    "リレーお絵かき(描き足していく)","同じお題でみんなで描いて見比べ",
+    "好きな食べ物を擬人化","季節の一枚","好きな色だけで描く","線画を交換して色塗り",
+    "好きな曲のイメージを描く"
+  ],
+  singlePro:[ // 上級者向け(「上級者向けもまぜる」をONにしたときだけ出る)
+    "同じキャラをみんなで別々の角度から描く"
   ],
   items:{
     chara:pack({
@@ -598,9 +599,11 @@ try{ if(localStorage.getItem("oekaki-bgm")==="1") document.addEventListener("poi
 
 /* ========== 保存 ========== */
 const KEY="oekaki-odai-v1";
+const DATA_VER=2; // お題の初期内容を変えたら上げる(各端末の保存分が新しい内容に置き換わる。りれきは残る)
 function load(){
-  try{ const s=localStorage.getItem(KEY); if(s){ const d=JSON.parse(s); if(d&&d.data) return d; } }catch(e){}
-  return {data:JSON.parse(JSON.stringify(DEFAULTS)), hist:[]};
+  let hist=[];
+  try{ const s=localStorage.getItem(KEY); if(s){ const d=JSON.parse(s); if(d&&d.data&&d.ver===DATA_VER) return d; if(d&&d.hist) hist=d.hist; } }catch(e){}
+  return {ver:DATA_VER, data:JSON.parse(JSON.stringify(DEFAULTS)), hist};
 }
 let state=load();
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
@@ -641,7 +644,10 @@ function setMode(m){
 }
 $("tabs").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) setMode(b.dataset.mode); });
 
-$("singleBtn").onclick=()=>spin(v=>$("singleVal").textContent=v, state.data.single, v=>{ singleDone=true; addHist("【会のテーマ】"+v); finished(); });
+let usePro=false;
+$("proToggle").onclick=()=>{ usePro=!usePro; $("proToggle").classList.toggle("on",usePro); toast(usePro?"上級者向けもまぜます":"ふつうのテーマだけ"); };
+$("singleBtn").onclick=()=>spin(v=>$("singleVal").textContent=v, usePro ? state.data.single.concat(state.data.singlePro||[]) : state.data.single,
+  v=>{ singleDone=true; addHist(((state.data.singlePro||[]).includes(v)?"【会のテーマ・上級】":"【会のテーマ】")+v); finished(); });
 
 function renderGenres(){
   const c=$("genreChips"); c.innerHTML="";
@@ -692,27 +698,28 @@ $("histClear").onclick=()=>{ if(confirm("りれきを消しますか?")){ state.
 /* ========== お題の編集 ========== */
 function renderEditorSelects(){
   const eb=$("edBox"); eb.innerHTML="";
-  [{id:SINGLE_ID,name:"会のテーマ"},...BOXES].forEach(b=>{ const o=document.createElement("option"); o.value=b.id; o.textContent=b.name; eb.appendChild(o); });
+  [{id:SINGLE_ID,name:"会のテーマ"},{id:"singlePro",name:"会のテーマ(上級者向け)"},...BOXES].forEach(b=>{ const o=document.createElement("option"); o.value=b.id; o.textContent=b.name; eb.appendChild(o); });
   const eg=$("edGenre"); eg.innerHTML="";
   [{id:"all",name:"共通(ぜんぶ)"},...GENRES].forEach(gn=>{ const o=document.createElement("option"); o.value=gn.id; o.textContent=gn.name; eg.appendChild(o); });
 }
 function renderEditorItems(){
   const box=$("edBox").value, gv=$("edGenre").value, w=$("edItems");
-  $("edGenre").classList.toggle("hide", box===SINGLE_ID); w.innerHTML="";
-  const list = box===SINGLE_ID ? state.data.single.map((t,i)=>({t,i})) : state.data.items[box].map((it,i)=>({t:it.t,g:it.g,i})).filter(x=>x.g===gv);
+  const arr = box===SINGLE_ID || box==="singlePro"; if(arr && !state.data[box]) state.data[box]=[];
+  $("edGenre").classList.toggle("hide", arr); w.innerHTML="";
+  const list = arr ? state.data[box].map((t,i)=>({t,i})) : state.data.items[box].map((it,i)=>({t:it.t,g:it.g,i})).filter(x=>x.g===gv);
   if(!list.length){ w.textContent="(まだありません)"; return; }
   list.forEach(x=>{
     const d=document.createElement("span"); d.className="item"; d.append(document.createTextNode(x.t));
     const del=document.createElement("button"); del.textContent="×"; del.title="けす";
     del.onclick=()=>{ if(!confirm("「"+x.t+"」をけしますか?")) return;
-      if(box===SINGLE_ID) state.data.single.splice(x.i,1); else state.data.items[box].splice(x.i,1); save(); renderEditorItems(); };
+      if(arr) state.data[box].splice(x.i,1); else state.data.items[box].splice(x.i,1); save(); renderEditorItems(); };
     d.appendChild(del); w.appendChild(d);
   });
 }
 $("edBox").onchange=renderEditorItems; $("edGenre").onchange=renderEditorItems;
 function addItem(){
   const t=$("edText").value.trim(); if(!t) return; const box=$("edBox").value;
-  if(box===SINGLE_ID) state.data.single.push(t); else state.data.items[box].push({t, g:$("edGenre").value});
+  if(box===SINGLE_ID||box==="singlePro"){ (state.data[box]=state.data[box]||[]).push(t); } else state.data.items[box].push({t, g:$("edGenre").value});
   $("edText").value=""; save(); renderEditorItems(); toast("ついかしました ♪");
 }
 $("edAdd").onclick=addItem;
@@ -728,7 +735,7 @@ $("importFile").onchange=e=>{
   r.readAsText(f);
 };
 $("resetBtn").onclick=()=>{ if(confirm("ふやした・へらしたお題が、ぜんぶはじめの状態に戻ります。よろしいですか?")){
-  state.data=JSON.parse(JSON.stringify(DEFAULTS)); save(); renderEditorItems(); toast("はじめに戻しました"); } };
+  state.data=JSON.parse(JSON.stringify(DEFAULTS)); state.ver=DATA_VER; save(); renderEditorItems(); toast("はじめに戻しました"); } };
 
 renderGenres(); renderBoxes(); renderSlots(); renderHist(); renderEditorSelects(); renderEditorItems(); setMode("single");
 requestAnimationFrame(loop);
