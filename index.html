@@ -105,7 +105,7 @@ input[type=text]{flex:1; min-width:160px}
   </div>
   <div class="device">
     <div class="screen"><canvas id="room" width="192" height="96"></canvas><div id="bub"></div></div>
-    <div class="status"><span id="stLeft"></span><span><button class="bgm" id="bgmBtn" title="BGM">♪ BGM OFF</button> <span id="stRight"></span></span></div>
+    <div class="status"><span id="stLeft"></span><span><button class="bgm" id="reloadBtn" title="みんなが投稿したお題を読み込みなおす">🔄 みんなのお題</button> <button class="bgm" id="bgmBtn" title="BGM">♪ BGM OFF</button> <span id="stRight"></span></span></div>
   </div>
 
   <div class="grid">
@@ -636,7 +636,7 @@ function mixCredits(){ return BOXES.filter(b=>activeBoxes.has(b.id)&&current[b.i
 const REMOTE_URL="https://script.google.com/macros/s/AKfycbxfivu-B5bz1ELNPbkOzh3wtxoD5vWHxIO7LIkBH5QSX1NpplW945pRBmbzNUTv0-4w/exec";
 let remote=(()=>{ try{ return JSON.parse(localStorage.getItem("oekaki-remote")||"[]"); }catch(e){ return []; } })();
 function setRemote(p){ remote=Array.isArray(p)?p:[]; try{ localStorage.setItem("oekaki-remote", JSON.stringify(remote)); }catch(e){} }
-async function loadRemote(){ if(!REMOTE_URL) return; try{ const j=await (await fetch(REMOTE_URL)).json(); if(j.ok) setRemote(j.posts); }catch(e){} }
+async function loadRemote(){ if(!REMOTE_URL) return false; try{ const j=await (await fetch(REMOTE_URL,{cache:"no-store"})).json(); if(j.ok){ setRemote(j.posts); return true; } }catch(e){} return false; }
 function creditFor(box,text){ const p=remote.find(p=>p.box===box&&p.text===text&&p.name); return p?p.name:""; }
 
 function pool(box){
@@ -787,6 +787,10 @@ $("poSend").onclick=async()=>{
 };
 
 renderGenres(); renderBoxes(); renderSlots(); renderHist(); renderEditorSelects(); renderEditorItems(); renderPost(); setMode("single"); loadRemote();
+$("reloadBtn").classList.toggle("hide", !REMOTE_URL);
+$("reloadBtn").onclick=async()=>{ const b=$("reloadBtn"); b.disabled=true; b.textContent="🔄 よみこみ中…";
+  const ok=await loadRemote(); b.disabled=false; b.textContent="🔄 みんなのお題";
+  if(ok){ toast("みんなのお題 "+remote.length+"こ ♪"); say(mascot,"あたらしいお題、とどいたよ!"); celebrate(mascot); } else toast("よみこめなかった…(電波を確かめてね)"); };
 requestAnimationFrame(loop);
 /* 公開版では「ふやす・へらす」を隠す(お題はレイがPCの原本に足して公開する)。URL の最後に #edit を付けると出る */
 if(location.protocol!=="file:" && !location.hash.includes("edit")) $("editCard").classList.add("hide");
