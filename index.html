@@ -141,6 +141,15 @@ input[type=text]{flex:1; min-width:160px}
           <div class="row"><button class="small" id="histClear">りれきを消す</button></div>
         </details>
       </div>
+      <div class="card notch" id="postCard">
+        <details>
+          <summary>📮 お題を投稿する(みんなのガチャに入るよ)</summary>
+          <div class="row"><select id="poBox"></select><select id="poGenre"></select></div>
+          <div class="row"><input type="text" id="poText" maxlength="40" placeholder="お題(40文字まで)"></div>
+          <div class="row"><input type="text" id="poName" maxlength="12" placeholder="名前(なくてもOK)"><button class="small" id="poSend">送る</button></div>
+          <div class="hint" style="margin-top:6px">送ったお題は、すぐにみんなのガチャに入ります。名前を書くと、出たときに「〇〇さんの案」と表示されます</div>
+        </details>
+      </div>
       <div class="card notch" id="editCard">
         <details>
           <summary>✏️ お題をふやす・へらす</summary>
@@ -617,12 +626,22 @@ function status(){
   $("stLeft").textContent = mode==="single" ? "♪ 会のテーマ" : mode==="genre" ? "♪ ジャンル: "+genreName(genre) : "♪ フリー(ぜんぶのジャンル)";
   $("stRight").textContent = "いる子: "+actors().map(a=>a.name).join("・");
 }
-function finished(){ sfx(); picSeed=(Math.random()*1e9)|0; picStart=performance.now()/1000; flutter=1; syncGuest(); celebrate(); status();
+function finished(names=[]){ sfx(); picSeed=(Math.random()*1e9)|0; picStart=performance.now()/1000; flutter=1; syncGuest(); celebrate(); status();
+  names=[...new Set(names.filter(Boolean))];
+  if(names.length){ say(mascot, names.map(n=>n+"さん").join("と")+"の案だよ!"); toast("✨ "+names.join("・")+"さんの案"); return; }
   const a=guest||mascot; say(a, guest ? LINES_G(guest.name)[0] : "きまったね!"); }
+function mixCredits(){ return BOXES.filter(b=>activeBoxes.has(b.id)&&current[b.id]).map(b=>creditFor(b.id,current[b.id])); }
+
+/* ========== みんなの投稿(Googleスプレッドシート+Apps Script) ========== */
+const REMOTE_URL="https://script.google.com/macros/s/AKfycbxfivu-B5bz1ELNPbkOzh3wtxoD5vWHxIO7LIkBH5QSX1NpplW945pRBmbzNUTv0-4w/exec";
+let remote=(()=>{ try{ return JSON.parse(localStorage.getItem("oekaki-remote")||"[]"); }catch(e){ return []; } })();
+function setRemote(p){ remote=Array.isArray(p)?p:[]; try{ localStorage.setItem("oekaki-remote", JSON.stringify(remote)); }catch(e){} }
+async function loadRemote(){ if(!REMOTE_URL) return; try{ const j=await (await fetch(REMOTE_URL)).json(); if(j.ok) setRemote(j.posts); }catch(e){} }
+function creditFor(box,text){ const p=remote.find(p=>p.box===box&&p.text===text&&p.name); return p?p.name:""; }
 
 function pool(box){
-  const list=state.data.items[box]||[];
-  return (mode==="genre" ? list.filter(i=>i.g==="all"||i.g===genre) : list).map(i=>i.t);
+  const list=(state.data.items[box]||[]).concat(remote.filter(p=>p.box===box).map(p=>({t:p.text, g:p.genre||"all"})));
+  return [...new Set((mode==="genre" ? list.filter(i=>i.g==="all"||i.g===genre) : list).map(i=>i.t))];
 }
 function spin(setter, cands, done){
   if(!cands.length){ setter("(お題がありません)"); return; }
@@ -650,10 +669,11 @@ let level="normal";
 $("levels").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; level=b.dataset.lv;
   document.querySelectorAll("#levels button").forEach(x=>x.classList.toggle("on",x===b)); });
 function singlePool(){ const d=state.data, E=d.singleEasy||[], P=d.singlePro||[];
-  return level==="pro" ? E.concat(d.single,P) : E.concat(d.single); }
+  const R=remote.filter(p=>p.box==="single").map(p=>p.text);
+  return [...new Set(level==="pro" ? E.concat(d.single,R,P) : E.concat(d.single,R))]; }
 $("singleBtn").onclick=()=>spin(v=>$("singleVal").textContent=v, singlePool(), v=>{ singleDone=true;
   const tag=(state.data.singlePro||[]).includes(v)?"・上級":"";
-  addHist("【会のテーマ"+tag+"】"+v); finished(); });
+  addHist("【会のテーマ"+tag+"】"+v); finished([creditFor("single",v)]); });
 
 function renderGenres(){
   const c=$("genreChips"); c.innerHTML="";
@@ -676,7 +696,7 @@ function renderSlots(){
     const nm=document.createElement("div"); nm.className="name"; nm.textContent=bx.name;
     const val=document.createElement("div"); val.className="val"; val.id="val-"+bx.id; val.textContent=current[bx.id]||"―";
     const re=document.createElement("button"); re.className="ib"; re.textContent="🎲"; re.title="この箱だけひき直す";
-    re.onclick=()=>{ if(locks.has(bx.id)) return; spin(v=>{ current[bx.id]=v; val.textContent=v; }, pool(bx.id), ()=>{ const t=mixText(); if(t) addHist(t); finished(); }); };
+    re.onclick=()=>{ if(locks.has(bx.id)) return; spin(v=>{ current[bx.id]=v; val.textContent=v; }, pool(bx.id), ()=>{ const t=mixText(); if(t) addHist(t); finished([creditFor(bx.id,current[bx.id])]); }); };
     const lk=document.createElement("button"); lk.className="ib"+(locks.has(bx.id)?" locked":""); lk.textContent="🔒"; lk.title="固定";
     lk.onclick=()=>{ locks.has(bx.id)?locks.delete(bx.id):locks.add(bx.id); lk.classList.toggle("locked"); };
     row.append(nm,val,re,lk); w.appendChild(row);
@@ -691,7 +711,7 @@ $("mixBtn").onclick=()=>{
   if(!ts.length){ toast("ひける箱がありません"); return; }
   let remain=ts.length;
   ts.forEach(bx=>{ const el=$("val-"+bx.id);
-    spin(v=>{ current[bx.id]=v; if(el) el.textContent=v; }, pool(bx.id), ()=>{ if(--remain===0){ const t=mixText(); if(t) addHist(t); finished(); } }); });
+    spin(v=>{ current[bx.id]=v; if(el) el.textContent=v; }, pool(bx.id), ()=>{ if(--remain===0){ const t=mixText(); if(t) addHist(t); finished(mixCredits()); } }); });
 };
 function copyNow(){
   const t = mode==="single" ? (singleDone ? "今日の会のテーマ🎨\n"+$("singleVal").textContent : "") : (mixText() ? "今日のお題🎨\n"+mixText() : "");
@@ -743,7 +763,30 @@ $("importFile").onchange=e=>{
 $("resetBtn").onclick=()=>{ if(confirm("ふやした・へらしたお題が、ぜんぶはじめの状態に戻ります。よろしいですか?")){
   state.data=JSON.parse(JSON.stringify(DEFAULTS)); state.ver=DATA_VER; save(); renderEditorItems(); toast("はじめに戻しました"); } };
 
-renderGenres(); renderBoxes(); renderSlots(); renderHist(); renderEditorSelects(); renderEditorItems(); setMode("single");
+/* 投稿欄 */
+function renderPost(){
+  const pb=$("poBox"); pb.innerHTML="";
+  [{id:"single",name:"会のテーマ"},...BOXES].forEach(b=>{ const o=document.createElement("option"); o.value=b.id; o.textContent=b.name; pb.appendChild(o); });
+  const pg=$("poGenre"); pg.innerHTML="";
+  [{id:"all",name:"ジャンル: 共通"},...GENRES.map(x=>({id:x.id,name:"ジャンル: "+x.name}))].forEach(x=>{ const o=document.createElement("option"); o.value=x.id; o.textContent=x.name; pg.appendChild(o); });
+  pb.onchange=()=>pg.classList.toggle("hide", pb.value==="single"); pb.onchange();
+  try{ $("poName").value=localStorage.getItem("oekaki-name")||""; }catch(e){}
+  $("postCard").classList.toggle("hide", !REMOTE_URL);
+}
+$("poSend").onclick=async()=>{
+  const text=$("poText").value.trim(), name=$("poName").value.trim(); if(!text){ toast("お題を書いてね"); return; }
+  try{ localStorage.setItem("oekaki-name", name); }catch(e){}
+  $("poSend").disabled=true;
+  try{
+    const r=await fetch(REMOTE_URL,{method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({box:$("poBox").value, genre:$("poGenre").value, text, name})});
+    const j=await r.json();
+    if(j.ok){ setRemote(j.posts); $("poText").value=""; toast("とどいたよ ♪"); celebrate(); say(mascot,"ありがとう!"); }
+    else toast(j.error||"送れなかった…");
+  }catch(e){ toast("送れなかった…(電波を確かめてね)"); }
+  $("poSend").disabled=false;
+};
+
+renderGenres(); renderBoxes(); renderSlots(); renderHist(); renderEditorSelects(); renderEditorItems(); renderPost(); setMode("single"); loadRemote();
 requestAnimationFrame(loop);
 /* 公開版では「ふやす・へらす」を隠す(お題はレイがPCの原本に足して公開する)。URL の最後に #edit を付けると出る */
 if(location.protocol!=="file:" && !location.hash.includes("edit")) $("editCard").classList.add("hide");
