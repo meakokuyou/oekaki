@@ -34,7 +34,7 @@ header h1 .b{background:var(--w1); color:var(--wt)}
 header .sub{font-size:13px; color:var(--wd); margin-top:8px}
 
 /* 部屋の上のタブ */
-.rooms{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); border:3px solid var(--ink); border-bottom:0}
+.rooms{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); border:3px solid var(--ink); border-bottom:0}
 .rooms button{font-size:16px; padding:8px 0 6px; cursor:pointer; border:0; letter-spacing:.06em; background:#e9e1dc; color:#a39388}
 .rooms button + button{border-left:3px solid var(--ink)}
 .rooms button.on{background:var(--w1); color:var(--wt)}
@@ -87,6 +87,23 @@ input[type=text]{flex:1; min-width:160px}
 .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--w1); border:3px solid var(--ink); padding:4px 16px; opacity:0; transition:opacity .25s; pointer-events:none; z-index:9}
 .toast.show{opacity:1}
 .hide{display:none !important}
+/* ギャラリー */
+.rooms button[data-mode=gallery].on{box-shadow:inset 0 -4px 0 var(--skyD)}
+#view-gallery{margin-top:18px}
+.gfilter{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px}
+.ggrid{display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:12px}
+@media (max-width:560px){ .ggrid{grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px} }
+.art{background:#fff; border:3px solid var(--ink); padding:6px 6px 4px; cursor:pointer; box-shadow:inset -2px -3px 0 #e8dfd0; text-align:left}
+.art img{display:block; width:100%; aspect-ratio:1/1; object-fit:cover; background:#f3ece6}
+.art b{display:block; font-weight:normal; font-size:13px; margin-top:4px; line-height:1.4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.art small{display:block; font-size:11px; color:var(--wd)}
+.gempty{color:var(--wd); font-size:14px; padding:20px 0; text-align:center}
+#lightbox{position:fixed; inset:0; background:rgba(61,51,64,.82); z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; cursor:pointer}
+#lightbox img{max-width:100%; max-height:78vh; border:4px solid #fff; background:#fff}
+#lightbox div{color:#fff; margin-top:10px; text-align:center; font-size:15px; line-height:1.5; white-space:pre-line}
+.upl{border-top:2px dotted var(--line); margin-top:14px; padding-top:10px}
+.upl input[type=file]{font-size:13px; max-width:100%}
+.upl input[type=number]{width:5em; border:2px solid var(--ink); background:#fff; padding:5px 8px; font-size:14px}
 </style>
 </head>
 <body>
@@ -102,10 +119,24 @@ input[type=text]{flex:1; min-width:160px}
     <button data-mode="single" class="on"><span class="l">会のテーマ</span><span class="s">テーマ</span></button>
     <button data-mode="genre"><span class="l">かけあわせ(ジャンル)</span><span class="s">ジャンル</span></button>
     <button data-mode="free"><span class="l">かけあわせ(フリー)</span><span class="s">フリー</span></button>
+    <button data-mode="gallery"><span class="l">ギャラリー</span><span class="s">絵</span></button>
   </div>
   <div class="device">
     <div class="screen"><canvas id="room" width="192" height="96"></canvas><div id="bub"></div></div>
     <div class="status"><span id="stLeft"></span><span><button class="bgm" id="reloadBtn" title="みんなが投稿したお題を読み込みなおす">🔄 みんなのお題</button> <button class="bgm" id="bgmBtn" title="BGM">♪ BGM OFF</button> <span id="stRight"></span></span></div>
+  </div>
+
+  <div id="view-gallery" class="card notch hide">
+    <h2>♪ みんなの絵</h2>
+    <div class="gfilter" id="gFilter"></div>
+    <div class="ggrid" id="gGrid"></div>
+    <div class="upl hide" id="gUpload">
+      <div class="hint">🔑 レイ用: 絵をのせる</div>
+      <div class="row"><input type="file" id="gFile" accept="image/*"></div>
+      <div class="row"><input type="text" id="gTitle" maxlength="60" placeholder="お題(なくてもOK)" list="gTitles"><datalist id="gTitles"></datalist></div>
+      <div class="row"><input type="text" id="gName" maxlength="20" placeholder="描いた人"><span class="hint">第</span><input type="number" id="gRound" min="0" max="999" value="1"><span class="hint">回</span><button class="small" id="gSend">のせる</button></div>
+    </div>
+    <div class="row" style="justify-content:flex-end"><button class="small" id="gKeyBtn" title="絵をのせる人だけ">🔑</button></div>
   </div>
 
   <div class="grid">
@@ -420,7 +451,8 @@ const BUNT=["pink","lemon","mint","sky","lav"];
 let mode="single", genre=GENRES[0].id;
 let activeBoxes=new Set(["chara","scene","rule"]), locks=new Set(), current={}, singleDone=false;
 let picSeed=1, picStart=-99, flutter=0;
-const themeKey=()=>mode==="single"?"single":mode==="free"?"free":genre;
+const themeKey=()=>mode==="single"||mode==="gallery"?"single":mode==="free"?"free":genre;
+const mixMode=()=>mode==="genre"||mode==="free";
 
 function rng(seed){ let s=seed>>>0; return ()=>{ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/4294967296; }; }
 
@@ -493,7 +525,8 @@ function drawRoom(t){
   R(72,16,18,14,"#d2b48e"); R(74,18,14,10,"#fff6df"); R(76,24,4,4,"#a8d8c4"); R(78,22,3,6,"#a8d8c4"); R(81,23,5,5,"#8cc7b0"); R(83,19,3,3,"#f6d77a");
   /* 掲示板(お題のメモ) */
   R(132,13,48,32,"#c9a27e"); R(134,15,44,28,"#e6c49a"); for(let y=17;y<43;y+=3) for(let x=135+(y%2);x<178;x+=4) R(x,y,1,1,"#dbb688");
-  const notes = mode==="single" ? (singleDone?[0]:[]) : BOXES.filter(b=>activeBoxes.has(b.id)).map((b,i)=>current[b.id]?BOXES.indexOf(b):-1-i);
+  if(mode==="gallery"){ [[138,18,"#c4e5f4"],[152,21,"#fbdbe0"],[165,17,"#dcefd3"]].forEach(([x,y,c],i)=>{ const fy=flutter>0?Math.round(Math.sin(t*30+i)):0; R(x,y+fy,11,13,"#fffdf9"); R(x+1,y+1+fy,9,8,c); R(x+3,y+5+fy,3,3,"#f6d77a"); R(x+5,y-1+fy,2,2,"#f29b9b"); }); }
+  const notes = mode==="single"||mode==="gallery" ? (singleDone?[0]:[]) : BOXES.filter(b=>activeBoxes.has(b.id)).map((b,i)=>current[b.id]?BOXES.indexOf(b):-1-i);
   if(mode==="single"){ if(singleDone){ const fy=flutter>0?Math.round(Math.sin(t*30)):0; R(142,19+fy,28,20,"#fbdbe0"); for(let l=0;l<4;l++) R(145,23+l*4+fy,22-(l%2)*6,1,"#e0a9b8"); R(155,18+fy,2,2,"#f29b9b"); } }
   else notes.slice(0,6).forEach((ni,i)=>{ const x=137+(i%3)*14, y=18+Math.floor(i/3)*13, fy=flutter>0?Math.round(Math.sin(t*30+i)):0;
     if(ni<0){ R(x,y,11,10,"#ead2ae"); return; }
@@ -505,7 +538,7 @@ function drawRoom(t){
   R(144,62,46,3,"#d2b48e"); R(144,65,46,1,"#b99670"); R(147,66,3,FLOOR-66,"#c4a47c"); R(184,66,3,FLOOR-66,"#c4a47c");
   R(149,59,13,3,"#f3e3d5"); R(149,59,13,1,"#fffaf0"); [["#f29b9b",151],["#fbeaa0",154],["#8fc8e6",157],["#8fd3bb",160]].forEach(([c,x])=>R(x,60,2,1,c));
   R(166,55,6,7,"#c4e5f4"); R(166,55,6,1,"#a8d6ec"); R(167,50,1,5,"#c9a27e"); R(167,49,1,1,"#e79bb3"); R(169,51,1,4,"#c9a27e"); R(169,50,1,1,"#8fd3bb"); R(170,49,1,6,"#c9a27e"); R(170,48,1,1,"#b29de0");
-  if(mode!=="single" && activeBoxes.has("sweets") && current.sweets){ CAKE.forEach((r,yy)=>[...r].forEach((ch,xx)=>{ if(ch!==".") R(176+xx,55+yy,1,1,CAKE_C[ch]); })); R(174,61,12,1,"#fffdf9"); }
+  if(mixMode() && activeBoxes.has("sweets") && current.sweets){ CAKE.forEach((r,yy)=>[...r].forEach((ch,xx)=>{ if(ch!==".") R(176+xx,55+yy,1,1,CAKE_C[ch]); })); R(174,61,12,1,"#fffdf9"); }
   /* ラグ */
   [["#c4e5f4",3],["#fbdbe5",2],["#fffaf0",1]].forEach(([c,r])=>{ for(let dy=-r;dy<=r;dy++){ const hw=Math.round(30*(r/3)*Math.sqrt(1-(dy/(r+.5))**2)); R(70-hw,90+dy,hw*2,1,c); } });
   if(phase()==="night"){ g.fillStyle="rgba(60,50,110,.16)"; g.fillRect(0,0,RW,RH); }
@@ -515,7 +548,7 @@ function drawRoom(t){
 const mk=(name,x)=>({name, x, dir:1, pause:0, jump:0, happy:0, blink:0});
 const mascot=mk(STAR_NAME,60);
 let guest=null;
-function guestName(){ return mode!=="single" && activeBoxes.has("chara") && current.chara ? current.chara : null; }
+function guestName(){ return mixMode() && activeBoxes.has("chara") && current.chara ? current.chara : null; }
 function syncGuest(){
   const n=guestName();
   if(!n){ guest=null; return; }
@@ -623,7 +656,7 @@ const rand=a=>a[Math.floor(Math.random()*a.length)];
 const genreName=g=>g==="all"?"共通":(GENRES.find(x=>x.id===g)||{}).name||g;
 function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.remove("show"),1500); }
 function status(){
-  $("stLeft").textContent = mode==="single" ? "♪ 会のテーマ" : mode==="genre" ? "♪ ジャンル: "+genreName(genre) : "♪ フリー(ぜんぶのジャンル)";
+  $("stLeft").textContent = mode==="gallery" ? "♪ ギャラリー" : mode==="single" ? "♪ 会のテーマ" : mode==="genre" ? "♪ ジャンル: "+genreName(genre) : "♪ フリー(ぜんぶのジャンル)";
   $("stRight").textContent = "いる子: "+actors().map(a=>a.name).join("・");
 }
 function finished(names=[]){ sfx(); picSeed=(Math.random()*1e9)|0; picStart=performance.now()/1000; flutter=1; syncGuest(); celebrate(); status();
@@ -636,7 +669,9 @@ function mixCredits(){ return BOXES.filter(b=>activeBoxes.has(b.id)&&current[b.i
 const REMOTE_URL="https://script.google.com/macros/s/AKfycbxfivu-B5bz1ELNPbkOzh3wtxoD5vWHxIO7LIkBH5QSX1NpplW945pRBmbzNUTv0-4w/exec";
 let remote=(()=>{ try{ return JSON.parse(localStorage.getItem("oekaki-remote")||"[]"); }catch(e){ return []; } })();
 function setRemote(p){ remote=Array.isArray(p)?p:[]; try{ localStorage.setItem("oekaki-remote", JSON.stringify(remote)); }catch(e){} }
-async function loadRemote(){ if(!REMOTE_URL) return false; try{ const j=await (await fetch(REMOTE_URL,{cache:"no-store"})).json(); if(j.ok){ setRemote(j.posts); return true; } }catch(e){} return false; }
+let gallery=(()=>{ try{ return JSON.parse(localStorage.getItem("oekaki-gallery")||"[]"); }catch(e){ return []; } })();
+function setGallery(g){ if(!Array.isArray(g)) return; gallery=g; try{ localStorage.setItem("oekaki-gallery", JSON.stringify(gallery)); }catch(e){} if(mode==="gallery") renderGallery(); }
+async function loadRemote(){ if(!REMOTE_URL) return false; try{ const j=await (await fetch(REMOTE_URL,{cache:"no-store"})).json(); if(j.ok){ setRemote(j.posts); setGallery(j.gallery); return true; } }catch(e){} return false; }
 function creditFor(box,text){ const p=remote.find(p=>p.box===box&&p.text===text&&p.name); return p?p.name:""; }
 
 function pool(box){
@@ -657,9 +692,11 @@ function setMode(m){
   mode=m;
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on", b.dataset.mode===m));
   $("view-single").classList.toggle("hide", m!=="single");
-  $("view-mix").classList.toggle("hide", m==="single");
+  $("view-mix").classList.toggle("hide", m!=="genre"&&m!=="free");
   $("genreCard").classList.toggle("hide", m!=="genre");
-  $("boxCard").classList.toggle("hide", m==="single");
+  $("boxCard").classList.toggle("hide", m!=="genre"&&m!=="free");
+  $("view-gallery").classList.toggle("hide", m!=="gallery");
+  if(m==="gallery"){ renderGallery(); say(mascot, gallery.length ? "みんなの絵だよ!" : "まだ絵がないみたい"); }
   renderSlots(); syncGuest(); status();
 }
 $("tabs").addEventListener("click", e=>{ const b=e.target.closest("button"); if(b) setMode(b.dataset.mode); });
@@ -763,6 +800,58 @@ $("importFile").onchange=e=>{
 $("resetBtn").onclick=()=>{ if(confirm("ふやした・へらしたお題が、ぜんぶはじめの状態に戻ります。よろしいですか?")){
   state.data=JSON.parse(JSON.stringify(DEFAULTS)); state.ver=DATA_VER; save(); renderEditorItems(); toast("はじめに戻しました"); } };
 
+
+/* ========== ギャラリー(のせるのはレイだけ。合言葉はこの端末に覚える) ========== */
+const thumb=(id,w)=>"https://drive.google.com/thumbnail?id="+encodeURIComponent(id)+"&sz=w"+w;
+let gRound="all";
+function renderGallery(){
+  const rounds=[...new Set(gallery.map(a=>a.round).filter(Boolean))].sort((a,b)=>b-a);
+  const f=$("gFilter"); f.innerHTML="";
+  [["all","ぜんぶ"],...rounds.map(r=>[String(r),"第"+r+"回"])].forEach(([v,l])=>{ const b=document.createElement("button"); b.className="chip"+(gRound===v?" on":""); b.textContent=l;
+    b.onclick=()=>{ gRound=v; renderGallery(); }; f.appendChild(b); });
+  const list=gallery.filter(a=>gRound==="all"||String(a.round)===gRound), gr=$("gGrid"); gr.innerHTML="";
+  if(!list.length){ const d=document.createElement("div"); d.className="gempty"; d.textContent="まだ絵がありません"; gr.appendChild(d); }
+  list.forEach(a=>{
+    const b=document.createElement("button"); b.className="art";
+    const im=document.createElement("img"); im.loading="lazy"; im.alt=a.title||"絵"; im.referrerPolicy="no-referrer"; im.src=thumb(a.id,400);
+    const t=document.createElement("b"); t.textContent=a.title||"(お題なし)";
+    const sm=document.createElement("small"); sm.textContent=[a.name, a.round?"第"+a.round+"回":""].filter(Boolean).join(" ・ ");
+    b.append(im,t,sm); b.onclick=()=>openArt(a); gr.appendChild(b);
+  });
+  let key=""; try{ key=localStorage.getItem("oekaki-gkey")||""; }catch(e){}
+  $("gUpload").classList.toggle("hide", !key || !REMOTE_URL);
+  $("gKeyBtn").classList.toggle("hide", !!key || !REMOTE_URL);
+  const dl=$("gTitles"); dl.innerHTML=""; singlePool().forEach(t=>{ const o=document.createElement("option"); o.value=t; dl.appendChild(o); });
+  if(rounds.length && !$("gRound").dataset.touched) $("gRound").value=rounds[0];
+}
+function openArt(a){
+  const lb=document.createElement("div"); lb.id="lightbox";
+  const im=document.createElement("img"); im.alt=a.title||"絵"; im.referrerPolicy="no-referrer"; im.src=thumb(a.id,1600);
+  const cap=document.createElement("div"); cap.textContent=(a.title||"(お題なし)")+"\n"+[a.name, a.round?"第"+a.round+"回":"", a.date].filter(Boolean).join(" ・ ");
+  lb.append(im,cap); lb.onclick=()=>lb.remove(); document.body.appendChild(lb);
+}
+$("gRound").addEventListener("input",()=>{ $("gRound").dataset.touched="1"; });
+$("gKeyBtn").onclick=()=>{ const k=prompt("絵をのせるための合言葉"); if(!k) return; try{ localStorage.setItem("oekaki-gkey", k.trim()); }catch(e){} renderGallery(); toast("合言葉をおぼえたよ"); };
+function shrink(file, max=1600){ // スマホの写真を小さくしてから送る
+  return new Promise((ok,ng)=>{ const url=URL.createObjectURL(file), im=new Image();
+    im.onload=()=>{ const k=Math.min(1, max/Math.max(im.naturalWidth, im.naturalHeight)), c=document.createElement("canvas");
+      c.width=Math.round(im.naturalWidth*k); c.height=Math.round(im.naturalHeight*k); const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height);
+      URL.revokeObjectURL(url); ok(c.toDataURL("image/jpeg",.86)); };
+    im.onerror=()=>{ URL.revokeObjectURL(url); ng(); }; im.src=url; });
+}
+$("gSend").onclick=async()=>{
+  const file=$("gFile").files[0]; if(!file){ toast("絵をえらんでね"); return; }
+  let key=""; try{ key=localStorage.getItem("oekaki-gkey")||""; }catch(e){}
+  const b=$("gSend"); b.disabled=true; b.textContent="のせてるよ…";
+  try{
+    const image=await shrink(file);
+    const j=await (await fetch(REMOTE_URL,{method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({type:"gallery", key, image, title:$("gTitle").value.trim(), name:$("gName").value.trim(), round:$("gRound").value})})).json();
+    if(j.ok){ setRemote(j.posts); setGallery(j.gallery); $("gFile").value=""; $("gTitle").value=""; $("gName").value=""; toast("のせたよ ♪"); flutter=1; celebrate(mascot); say(mascot,"すてきな絵!"); }
+    else { toast(j.error||"のせられなかった…"); if((j.error||"").includes("合言葉")){ try{ localStorage.removeItem("oekaki-gkey"); }catch(e){} renderGallery(); } }
+  }catch(e){ toast("のせられなかった…(電波を確かめてね)"); }
+  b.disabled=false; b.textContent="のせる";
+};
 /* 投稿欄 */
 function renderPost(){
   const pb=$("poBox"); pb.innerHTML="";
